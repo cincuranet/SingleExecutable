@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+	<metadata>
+		<id>SingleExecutable</id>
+		<version>0.0.0.0</version>
+		<title>SingleExecutable</title>
+		<authors>Jiří Činčura</authors>
+		<owners>Jiří Činčura</owners>
+		<projectUrl>https://github.com/cincuranet/SingleExecutable</projectUrl>
+		<requireLicenseAcceptance>false</requireLicenseAcceptance>
+		<description>
+Tool that allows you to pack all your DLLs to the main executable.
+
+More info: http://blog.cincura.net/id/233581/ .
+		</description>
+		<tags>executable, singleexecutable</tags>
+	</metadata>
+	<files>
+		<file src="SingleExecutable\bin\Release\SingleExecutable.exe" target="tools" />
+	</files>
+</package>
