@@ -8,6 +8,7 @@
 		<owners>Jiří Činčura</owners>
 		<projectUrl>https://github.com/cincuranet/SingleExecutable</projectUrl>
 		<requireLicenseAcceptance>false</requireLicenseAcceptance>
+		<developmentDependency>true</developmentDependency>
 		<description>
 Tool that allows you to pack all your DLLs to the main executable.
 
