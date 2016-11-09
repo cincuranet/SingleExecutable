@@ -10,18 +10,27 @@ namespace SingleExecutable
 
 		public static void ProcessCctor(TypeDefinition type, string prefix)
 		{
-			var cctor = type.Methods.FirstOrDefault(m => m.IsStatic && m.IsConstructor);
-			if (cctor == null)
+			type.Attributes = type.Attributes & ~TypeAttributes.BeforeFieldInit;
+
+			var oldCctor = type.Methods.FirstOrDefault(m => m.IsStatic && m.IsConstructor);
+			if (oldCctor != null)
 			{
-				cctor = new MethodDefinition(
+				oldCctor.Name = $"{prefix}OldCctor";
+				oldCctor.Attributes = oldCctor.Attributes & ~MethodAttributes.SpecialName;
+				oldCctor.Attributes = oldCctor.Attributes & ~MethodAttributes.RTSpecialName;
+			}
+
+			var newCctor = new MethodDefinition(
 					CctorName,
 					MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
 					type.Module.Import(typeof(void)));
-				cctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
-				type.Methods.Add(cctor);
+			type.Methods.Add(newCctor);
+			newCctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, new MethodReference($"{prefix}.cctor", newCctor.ReturnType, type)));
+			if (oldCctor != null)
+			{
+				newCctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, new MethodReference(oldCctor.Name, newCctor.ReturnType, type)));
 			}
-			type.Attributes = type.Attributes & ~TypeAttributes.BeforeFieldInit;
-			cctor.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, new MethodReference($"{prefix}.cctor", cctor.ReturnType, type)));
+			newCctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
 		}
 	}
 }
