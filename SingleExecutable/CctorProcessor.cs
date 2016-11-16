@@ -15,7 +15,7 @@ namespace SingleExecutable
 			var oldCctor = type.Methods.FirstOrDefault(m => m.IsStatic && m.IsConstructor);
 			if (oldCctor != null)
 			{
-				oldCctor.Name = $"{prefix}OldCctor";
+				oldCctor.Name = $"{prefix}{CctorName}_Old";
 				oldCctor.Attributes = oldCctor.Attributes & ~MethodAttributes.SpecialName;
 				oldCctor.Attributes = oldCctor.Attributes & ~MethodAttributes.RTSpecialName;
 			}
@@ -25,7 +25,7 @@ namespace SingleExecutable
 					MethodAttributes.Private | MethodAttributes.Static | MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
 					type.Module.Import(typeof(void)));
 			type.Methods.Add(newCctor);
-			newCctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, new MethodReference($"{prefix}.cctor", newCctor.ReturnType, type)));
+			newCctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, new MethodReference($"{prefix}{CctorName}", newCctor.ReturnType, type)));
 			if (oldCctor != null)
 			{
 				newCctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, new MethodReference(oldCctor.Name, newCctor.ReturnType, type)));
