@@ -63,6 +63,7 @@
   <ItemGroup>
     <Compile Include="CctorProcessor.cs" />
     <Compile Include="Definitions.cs" />
+    <Compile Include="Helpers.cs" />
     <Compile Include="MethodCopier.cs" />
     <Compile Include="InjectMe.cs" />
     <Compile Include="Program.cs" />

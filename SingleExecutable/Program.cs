@@ -84,8 +84,11 @@ namespace SingleExecutable
 		static void EmbedDll(AssemblyDefinition assembly, string dll, string name)
 		{
 			Console.WriteLine($"  {name}");
-			var resource = new EmbeddedResource($"{Definitions.Prefix}{name}", ManifestResourceAttributes.Private, File.ReadAllBytes(dll));
-			assembly.MainModule.Resources.Add(resource);
+			var resourceName = Helpers.IsNativeDll(dll)
+				? $"{Definitions.Prefix}{name}"
+				: $"{Definitions.PrefixNative}{name}";
+			var resource = new EmbeddedResource(resourceName, ManifestResourceAttributes.Private, File.ReadAllBytes(dll));
+			resources.Add(resource);
 		}
 
 		static void WriteAssembly(AssemblyDefinition assembly, string output)
