@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Microsoft.Extensions.CommandLineUtils;
@@ -17,6 +18,7 @@ namespace SingleExecutable
 			app.Name = Path.GetFileName(ExecutingAssembly.Location);
 			var argExecutable = app.Option("-e", "Executable to inject into.", CommandOptionType.SingleValue);
 			var argOutput = app.Option("-o", "Output file.", CommandOptionType.SingleValue);
+			var argAdd = app.Option("-a", "Another files to add.", CommandOptionType.MultipleValue);
 			app.Execute(args);
 			if (!argExecutable.HasValue() || !argOutput.HasValue())
 			{
@@ -34,7 +36,7 @@ namespace SingleExecutable
 				Console.WriteLine("Loading.");
 				var assembly = AssemblyDefinition.ReadAssembly(executable);
 				Console.WriteLine("Embedding:");
-				EmbeddDlls(assembly, Path.GetDirectoryName(executable));
+				EmbeddDlls(assembly, Path.GetDirectoryName(executable), argAdd.Values);
 				Console.WriteLine("Injecting:");
 				InjectLoading(assembly);
 				Console.WriteLine("Writing.");
@@ -54,15 +56,18 @@ namespace SingleExecutable
 			Environment.Exit(1);
 		}
 
-		static void EmbeddDlls(AssemblyDefinition assembly, string directory)
+		static void EmbeddDlls(AssemblyDefinition assembly, string directory, IEnumerable<string> anotherFiles)
 		{
 			var resources = assembly.MainModule.Resources;
 			foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
 			{
 				var name = dll.Remove(0, directory.Length + 1);
-				Console.WriteLine($"  {name}");
-				var resource = new EmbeddedResource($"{Definitions.Prefix}{name}", ManifestResourceAttributes.Private, File.ReadAllBytes(dll));
-				resources.Add(resource);
+				EmbedDll(assembly, dll, name);
+			}
+			foreach (var file in anotherFiles.Select(f => Path.GetFullPath(f)).Where(f => File.Exists(f)))
+			{
+				var name = Path.GetFileName(file);
+				EmbedDll(assembly, file, name);
 			}
 		}
 
@@ -74,6 +79,13 @@ namespace SingleExecutable
 			MethodCopier.CopyMethods(sourceAssembly.MainModule.Types.First(t => t.Name == nameof(InjectMe)), entryPointClass, Definitions.Prefix);
 			Console.WriteLine($"  .cctor");
 			CctorProcessor.ProcessCctor(entryPointClass, Definitions.Prefix);
+		}
+
+		static void EmbedDll(AssemblyDefinition assembly, string dll, string name)
+		{
+			Console.WriteLine($"  {name}");
+			var resource = new EmbeddedResource($"{Definitions.Prefix}{name}", ManifestResourceAttributes.Private, File.ReadAllBytes(dll));
+			assembly.MainModule.Resources.Add(resource);
 		}
 
 		static void WriteAssembly(AssemblyDefinition assembly, string output)
