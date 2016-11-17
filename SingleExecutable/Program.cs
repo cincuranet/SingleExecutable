@@ -58,7 +58,6 @@ namespace SingleExecutable
 
 		static void EmbeddDlls(AssemblyDefinition assembly, string directory, IEnumerable<string> anotherFiles)
 		{
-			var resources = assembly.MainModule.Resources;
 			foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
 			{
 				var name = dll.Remove(0, directory.Length + 1);
@@ -88,7 +87,7 @@ namespace SingleExecutable
 				? $"{Definitions.Prefix}{name}"
 				: $"{Definitions.PrefixNative}{name}";
 			var resource = new EmbeddedResource(resourceName, ManifestResourceAttributes.Private, File.ReadAllBytes(dll));
-			resources.Add(resource);
+			assembly.MainModule.Resources.Add(resource);
 		}
 
 		static void WriteAssembly(AssemblyDefinition assembly, string output)
