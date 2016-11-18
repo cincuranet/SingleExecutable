@@ -79,14 +79,6 @@ namespace SingleExecutable
 			return null;
 		}
 
-		static byte[] ComputeChecksum(Stream stream)
-		{
-			using (var sha = SHA1.Create())
-			{
-				return sha.ComputeHash(stream);
-			}
-		}
-
 		static bool OnDiskSameAsInResource(Stream resource, string path)
 		{
 			resource.Position = 0;
