@@ -5,7 +5,7 @@ namespace SingleExecutable
 {
     static class Helpers
     {
-        public static bool IsNativeDll(string path)
+        public static bool IsDotNetDll(string path)
         {
             try
             {

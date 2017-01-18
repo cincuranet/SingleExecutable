@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace SingleExecutable
 {
@@ -12,7 +13,7 @@ namespace SingleExecutable
 		static InjectMe()
 		{
 			AppDomain.CurrentDomain.AssemblyResolve += AssemblyResolve;
-			ExtractNativeDlls();
+			PreExtractDlls();
 		}
 
 		static Assembly AssemblyResolve(object sender, ResolveEventArgs args)
@@ -21,17 +22,13 @@ namespace SingleExecutable
 			return GetLoadedAssembly(assemblyName) ?? GetEmbeddedAssembly(assemblyName);
 		}
 
-		static void ExtractNativeDlls()
+		static void PreExtractDlls()
 		{
 			var executingAssembly = Assembly.GetExecutingAssembly();
 			var executingDirectory = Path.GetDirectoryName(executingAssembly.Location);
-			foreach (var name in executingAssembly.GetManifestResourceNames())
+			foreach (var name in GetPreExtractNames(executingAssembly))
 			{
-				if (!name.StartsWith(Definitions.PrefixNative, StringComparison.Ordinal))
-				{
-					continue;
-				}
-				var dllName = name.Remove(0, Definitions.PrefixNative.Length);
+				var dllName = name.Remove(0, Definitions.PrefixDll.Length);
 				using (var s = executingAssembly.GetManifestResourceStream(name))
 				{
 					var path = Path.Combine(executingDirectory, dllName);
@@ -45,8 +42,9 @@ namespace SingleExecutable
 					}
 					catch (IOException ex)
 					{
-						throw new ApplicationException($"Unable to extract native DLL '{dllName}'.", ex);
+						throw new ApplicationException($"Unable to pre-extract DLL '{dllName}'.", ex);
 					}
+
 				}
 			}
 		}
@@ -66,14 +64,11 @@ namespace SingleExecutable
 		static Assembly GetEmbeddedAssembly(AssemblyName assemblyName)
 		{
 			var executingAssembly = Assembly.GetExecutingAssembly();
-			using (var s = executingAssembly.GetManifestResourceStream($"{Definitions.Prefix}{assemblyName.Name}.dll"))
+			using (var s = executingAssembly.GetManifestResourceStream($"{Definitions.PrefixDll}{assemblyName.Name}.dll"))
 			{
 				if (s != null)
 				{
-					using (var reader = new BinaryReader(s))
-					{
-						return Assembly.Load(reader.ReadBytes((int)s.Length));
-					}
+					return Assembly.Load(ReadAllBytes(s));
 				}
 			}
 			return null;
@@ -105,6 +100,25 @@ namespace SingleExecutable
 			{
 				resource.CopyTo(fs);
 				fs.SetLength(resource.Length);
+			}
+		}
+
+		static byte[] ReadAllBytes(Stream stream)
+		{
+			using (var reader = new BinaryReader(stream))
+			{
+				return reader.ReadBytes((int)stream.Length);
+			}
+		}
+
+		static string[] GetPreExtractNames(Assembly executingAssembly)
+		{
+			using (var s = executingAssembly.GetManifestResourceStream(Definitions.PreExtractResourceName))
+			{
+				var data = Encoding.UTF8.GetString(ReadAllBytes(s));
+				if (data == string.Empty)
+					return Array.Empty<string>();
+				return data.Split(Definitions.PreExtractSeparator);
 			}
 		}
 	}

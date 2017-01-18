@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Microsoft.Extensions.CommandLineUtils;
 using Mono.Cecil;
 
@@ -19,6 +20,7 @@ namespace SingleExecutable
 			var argExecutable = app.Option("-e", "Executable to inject into.", CommandOptionType.SingleValue);
 			var argOutput = app.Option("-o", "Output file.", CommandOptionType.SingleValue);
 			var argAdd = app.Option("-a", "Another files to add.", CommandOptionType.MultipleValue);
+			var argPreExtract = app.Option("-p", "Pre-extract files.", CommandOptionType.MultipleValue);
 			app.Execute(args);
 			if (!argExecutable.HasValue() || !argOutput.HasValue())
 			{
@@ -33,15 +35,17 @@ namespace SingleExecutable
 
 			try
 			{
-				Console.WriteLine("Loading.");
+				Console.WriteLine("Loading...");
 				var assembly = AssemblyDefinition.ReadAssembly(executable);
 				Console.WriteLine("Embedding:");
-				EmbeddDlls(assembly, Path.GetDirectoryName(executable), argAdd.Values);
+				var embedDllsResult = EmbedDlls(assembly, Path.GetDirectoryName(executable), argAdd.Values);
+				Console.WriteLine("Writing pre-extraction...");
+				WritePreExtract(assembly, embedDllsResult, argPreExtract.Values);
 				Console.WriteLine("Injecting:");
 				InjectLoading(assembly);
-				Console.WriteLine("Writing.");
+				Console.WriteLine("Writing...");
 				WriteAssembly(assembly, output);
-				Console.WriteLine("Done.");
+				Console.WriteLine("Done...");
 			}
 			catch (Exception ex)
 			{
@@ -56,18 +60,28 @@ namespace SingleExecutable
 			Environment.Exit(1);
 		}
 
-		static void EmbeddDlls(AssemblyDefinition assembly, string directory, IEnumerable<string> anotherFiles)
+		static IEnumerable<Tuple<string, string>> EmbedDlls(AssemblyDefinition assembly, string directory, IEnumerable<string> anotherDlls)
 		{
-			foreach (var dll in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
+			var result = new List<Tuple<string, string>>();
+			var standard = Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly);
+			var another = anotherDlls.Select(Path.GetFullPath).Where(File.Exists);
+			foreach (var dll in standard.Concat(another))
 			{
-				var name = dll.Remove(0, directory.Length + 1);
-				EmbedDll(assembly, dll, name);
+				var resourceName = EmbedDll(assembly, dll);
+				result.Add(Tuple.Create(dll, resourceName));
 			}
-			foreach (var file in anotherFiles.Select(f => Path.GetFullPath(f)).Where(f => File.Exists(f)))
-			{
-				var name = Path.GetFileName(file);
-				EmbedDll(assembly, file, name);
-			}
+			return result;
+		}
+
+		static void WritePreExtract(AssemblyDefinition assembly, IEnumerable<Tuple<string, string>> embeddedDlls, IEnumerable<string> preExtractDlls)
+		{
+			var preExtract = new HashSet<string>(preExtractDlls.Select(Path.GetFullPath), StringComparer.OrdinalIgnoreCase);
+			var dlls = embeddedDlls
+				.Where(x => preExtract.Contains(x.Item1) || !Helpers.IsDotNetDll(x.Item1))
+				.Select(x => x.Item2);
+			var data = Encoding.UTF8.GetBytes(string.Join(Definitions.PreExtractSeparator.ToString(), dlls));
+			var resource = new EmbeddedResource(Definitions.PreExtractResourceName, ManifestResourceAttributes.Public, data);
+			assembly.MainModule.Resources.Add(resource);
 		}
 
 		static void InjectLoading(AssemblyDefinition assembly)
@@ -80,14 +94,14 @@ namespace SingleExecutable
 			CctorProcessor.ProcessCctor(entryPointClass, Definitions.Prefix);
 		}
 
-		static void EmbedDll(AssemblyDefinition assembly, string dll, string name)
+		static string EmbedDll(AssemblyDefinition assembly, string dll)
 		{
-			Console.WriteLine($"  {name}");
-			var resourceName = Helpers.IsNativeDll(dll)
-				? $"{Definitions.Prefix}{name}"
-				: $"{Definitions.PrefixNative}{name}";
+			Console.WriteLine($"  {dll}");
+			var name = Path.GetFileName(dll);
+			var resourceName = $"{Definitions.PrefixDll}{name}";
 			var resource = new EmbeddedResource(resourceName, ManifestResourceAttributes.Private, File.ReadAllBytes(dll));
 			assembly.MainModule.Resources.Add(resource);
+			return resourceName;
 		}
 
 		static void WriteAssembly(AssemblyDefinition assembly, string output)

@@ -5,6 +5,8 @@ namespace SingleExecutable
 	{
 		private const string Separator = "|";
 		public const string Prefix = nameof(SingleExecutable) + Separator;
-		public const string PrefixNative = nameof(SingleExecutable) + Separator + "Native" + Separator;
+		public const string PrefixDll = Prefix + "DLL" + Separator;
+		public const string PreExtractResourceName = Prefix + "PreExtract";
+		public const char PreExtractSeparator = ':';
 	}
 }
