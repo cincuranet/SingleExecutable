@@ -18,6 +18,7 @@ namespace SingleExecutable
 
 		static Assembly AssemblyResolve(object sender, ResolveEventArgs args)
 		{
+			Log($"Resolving '{args.Name}'.");
 			var assemblyName = new AssemblyName(args.Name);
 			return GetLoadedAssembly(assemblyName) ?? GetEmbeddedAssembly(assemblyName);
 		}
@@ -29,6 +30,7 @@ namespace SingleExecutable
 			foreach (var name in GetPreExtractNames(executingAssembly))
 			{
 				var dllName = name.Remove(0, Definitions.PrefixDll.Length);
+				Log($"Pre-extracting '{dllName}'.");
 				using (var s = executingAssembly.GetManifestResourceStream(name))
 				{
 					var path = Path.Combine(executingDirectory, dllName);
@@ -51,10 +53,12 @@ namespace SingleExecutable
 
 		static Assembly GetLoadedAssembly(AssemblyName assemblyName)
 		{
+			Log($"Searching for '{assemblyName.Name}' in loaded assemblies.");
 			foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
 			{
 				if (a.FullName == assemblyName.FullName || a.GetName().Name == assemblyName.Name)
 				{
+					Log($"Found '{assemblyName.Name}' in loaded assemblies.");
 					return a;
 				}
 			}
@@ -63,11 +67,13 @@ namespace SingleExecutable
 
 		static Assembly GetEmbeddedAssembly(AssemblyName assemblyName)
 		{
+			Log($"Searching for '{assemblyName.Name}' in embedded assemblies.");
 			var executingAssembly = Assembly.GetExecutingAssembly();
 			using (var s = executingAssembly.GetManifestResourceStream($"{Definitions.PrefixDll}{assemblyName.Name}.dll"))
 			{
 				if (s != null)
 				{
+					Log($"Found '{assemblyName.Name}' in embedded assemblies.");
 					return Assembly.Load(ReadAllBytes(s));
 				}
 			}
@@ -119,6 +125,14 @@ namespace SingleExecutable
 				if (data == string.Empty)
 					return Array.Empty<string>();
 				return data.Split(Definitions.PreExtractSeparator);
+			}
+		}
+
+		static void Log(string message)
+		{
+			if (int.TryParse(Environment.GetEnvironmentVariable(Definitions.LoggingEnvironmentVariable), out var logging) && logging == 1)
+			{
+				File.AppendAllLines(Definitions.LogFile, new[] { message });
 			}
 		}
 	}

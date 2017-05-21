@@ -8,5 +8,7 @@ namespace SingleExecutable
 		public const string PrefixDll = Prefix + "DLL" + Separator;
 		public const string PreExtractResourceName = Prefix + "PreExtract";
 		public const char PreExtractSeparator = ':';
+		public const string LogFile = nameof(SingleExecutable) + ".log";
+		public const string LoggingEnvironmentVariable = "SE_DEBUG";
 	}
 }
