@@ -87,8 +87,8 @@ namespace SingleExecutable
 			{
 				if (fs.Length != resource.Length)
 					return false;
-				using (BinaryReader resourceReader = new BinaryReader(resource),
-					fileReader = new BinaryReader(fs))
+				using (BinaryReader resourceReader = new BinaryReader(resource, Encoding.UTF8, true),
+					fileReader = new BinaryReader(fs, Encoding.UTF8, true))
 				{
 					var fileData = fileReader.ReadBytes((int)fs.Length);
 					var resourceData = resourceReader.ReadBytes((int)resource.Length);
@@ -111,7 +111,7 @@ namespace SingleExecutable
 
 		static byte[] ReadAllBytes(Stream stream)
 		{
-			using (var reader = new BinaryReader(stream))
+			using (var reader = new BinaryReader(stream, Encoding.UTF8, true))
 			{
 				return reader.ReadBytes((int)stream.Length);
 			}
