@@ -1,9 +1,8 @@
 ﻿using System;
-using System.Collections;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace SingleExecutable
@@ -23,30 +22,55 @@ namespace SingleExecutable
 			return GetLoadedAssembly(assemblyName) ?? GetEmbeddedAssembly(assemblyName);
 		}
 
+		static MemoryStream Decompress(Stream stream)
+		{
+			var output = new MemoryStream();
+			using (var compressor = new GZipStream(output, CompressionMode.Decompress))
+			{
+				stream.CopyTo(compressor);
+			}
+
+			return output;
+		}
+
+		static byte[] DecompressBytes(Stream aStream)
+		{
+			using (var output = Decompress(aStream))
+			{
+				return output.ToArray();
+			}
+		}
+
+		static bool IsCompressed(string resourceName) =>
+			resourceName.IndexOf(Definitions.PrefixCompressed, StringComparison.Ordinal) == 0;
+
 		static void PreExtractDlls()
 		{
 			var executingAssembly = Assembly.GetExecutingAssembly();
 			var executingDirectory = Path.GetDirectoryName(executingAssembly.Location);
 			foreach (var name in GetPreExtractNames(executingAssembly))
 			{
-				var dllName = name.Remove(0, Definitions.PrefixDll.Length);
+				var dllName = name.Remove(0, Definitions.PrefixCompressed.Length);
 				Log($"Pre-extracting '{dllName}'.");
 				using (var s = executingAssembly.GetManifestResourceStream(name))
 				{
-					var path = Path.Combine(executingDirectory, dllName);
-					try
+					using (var data = IsCompressed(name) ? Decompress(s) : default(Stream))
 					{
-						if (File.Exists(path) && OnDiskSameAsInResource(s, path))
+						try
 						{
-							continue;
-						}
-						SaveToDisk(s, path);
-					}
-					catch (IOException ex)
-					{
-						throw new ApplicationException($"Unable to pre-extract DLL '{dllName}'.", ex);
-					}
+							var path = Path.Combine(executingDirectory, dllName);
+							if (File.Exists(path) && OnDiskSameAsInResource(data ?? s, path))
+							{
+								continue;
+							}
 
+							SaveToDisk(data ?? s, path);
+						}
+						catch (IOException ex)
+						{
+							throw new ApplicationException($"Unable to pre-extract DLL '{dllName}'.", ex);
+						}
+					}
 				}
 			}
 		}
@@ -65,19 +89,27 @@ namespace SingleExecutable
 			return null;
 		}
 
-		static Assembly GetEmbeddedAssembly(AssemblyName assemblyName)
+		static Assembly GetEmbeddedAssembly(AssemblyName assemblyName, Assembly executingAssembly, bool compressed)
 		{
-			Log($"Searching for '{assemblyName.Name}' in embedded assemblies.");
-			var executingAssembly = Assembly.GetExecutingAssembly();
-			using (var s = executingAssembly.GetManifestResourceStream($"{Definitions.PrefixDll}{assemblyName.Name}.dll"))
+			var prefix = compressed ? Definitions.PrefixCompressed : Definitions.PrefixNotCompressed;
+			using (var s = executingAssembly.GetManifestResourceStream($"{prefix}{assemblyName.Name}.dll"))
 			{
 				if (s != null)
 				{
 					Log($"Found '{assemblyName.Name}' in embedded assemblies.");
-					return Assembly.Load(ReadAllBytes(s));
+					return Assembly.Load(compressed ? DecompressBytes(s) : ReadAllBytes(s));
 				}
 			}
+
 			return null;
+		}
+
+		static Assembly GetEmbeddedAssembly(AssemblyName assemblyName)
+		{
+			Log($"Searching for '{assemblyName.Name}' in embedded assemblies.");
+			var executingAssembly = Assembly.GetExecutingAssembly();
+			return GetEmbeddedAssembly(assemblyName, executingAssembly, true) ??
+				   GetEmbeddedAssembly(assemblyName, executingAssembly, false);
 		}
 
 		static bool OnDiskSameAsInResource(Stream resource, string path)
