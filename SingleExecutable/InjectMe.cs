@@ -1,18 +1,22 @@
 ﻿using System;
-using System.Collections;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace SingleExecutable
 {
 	static class InjectMe
 	{
+		static readonly Assembly ExecutingAssembly;
+		static readonly string[] CompressedResources;
+
 		static InjectMe()
 		{
 			AppDomain.CurrentDomain.AssemblyResolve += AssemblyResolve;
+			ExecutingAssembly = Assembly.GetExecutingAssembly();
+			CompressedResources = GetCompressionNames(ExecutingAssembly);
 			PreExtractDlls();
 		}
 
@@ -25,13 +29,12 @@ namespace SingleExecutable
 
 		static void PreExtractDlls()
 		{
-			var executingAssembly = Assembly.GetExecutingAssembly();
-			var executingDirectory = Path.GetDirectoryName(executingAssembly.Location);
-			foreach (var name in GetPreExtractNames(executingAssembly))
+			var executingDirectory = Path.GetDirectoryName(ExecutingAssembly.Location);
+			foreach (var name in GetPreExtractNames(ExecutingAssembly))
 			{
 				var dllName = name.Remove(0, Definitions.PrefixDll.Length);
 				Log($"Pre-extracting '{dllName}'.");
-				using (var s = executingAssembly.GetManifestResourceStream(name))
+				using (var s = GetResourceDllStream(name))
 				{
 					var path = Path.Combine(executingDirectory, dllName);
 					try
@@ -68,8 +71,8 @@ namespace SingleExecutable
 		static Assembly GetEmbeddedAssembly(AssemblyName assemblyName)
 		{
 			Log($"Searching for '{assemblyName.Name}' in embedded assemblies.");
-			var executingAssembly = Assembly.GetExecutingAssembly();
-			using (var s = executingAssembly.GetManifestResourceStream($"{Definitions.PrefixDll}{assemblyName.Name}.dll"))
+			var name = $"{Definitions.PrefixDll}{assemblyName.Name}.dll";
+			using (var s = GetResourceDllStream(name))
 			{
 				if (s != null)
 				{
@@ -109,11 +112,38 @@ namespace SingleExecutable
 			}
 		}
 
-		static byte[] ReadAllBytes(Stream stream)
+		static byte[] ReadAllBytes(Stream resource)
 		{
-			using (var reader = new BinaryReader(stream, Encoding.UTF8, true))
+			resource.Position = 0;
+			using (var reader = new BinaryReader(resource, Encoding.UTF8, true))
 			{
-				return reader.ReadBytes((int)stream.Length);
+				return reader.ReadBytes((int)resource.Length);
+			}
+		}
+
+		static Stream GetResourceDllStream(string name)
+		{
+			var manifest = ExecutingAssembly.GetManifestResourceStream(name);
+			if (manifest == null)
+				return null;
+			if (!CompressedResources.Contains(name))
+				return manifest;
+			var memory = new MemoryStream();
+			using (var deflate = new DeflateStream(manifest, CompressionMode.Decompress, true))
+			{
+				deflate.CopyTo(memory);
+			}
+			return memory;
+		}
+
+		static string[] GetCompressionNames(Assembly executingAssembly)
+		{
+			using (var s = executingAssembly.GetManifestResourceStream(Definitions.CompressionResourceName))
+			{
+				var data = Encoding.UTF8.GetString(ReadAllBytes(s));
+				if (data == string.Empty)
+					return Array.Empty<string>();
+				return data.Split(Definitions.PreExtractSeparator);
 			}
 		}
 

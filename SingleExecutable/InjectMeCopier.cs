@@ -4,14 +4,27 @@ using Mono.Cecil.Cil;
 
 namespace SingleExecutable
 {
-	static class MethodCopier
+	static class InjectMeCopier
 	{
-		public static void CopyMethods(TypeDefinition type, TypeDefinition destination, string prefix)
+		public static void Copy(TypeDefinition type, TypeDefinition destination, string prefix)
 		{
+			foreach (var f in type.Fields)
+			{
+				CopyField(f, destination, prefix);
+			}
+
 			foreach (var m in type.Methods)
 			{
 				CopyMethod(m, destination, prefix);
 			}
+		}
+
+		static FieldDefinition CopyField(FieldDefinition f, TypeDefinition destination, string prefix)
+		{
+			var targetModule = destination.Module;
+			var newField = new FieldDefinition($"{prefix}{f.Name}", f.Attributes, targetModule.Import(f.FieldType));
+			destination.Fields.Add(newField);
+			return newField;
 		}
 
 		static MethodDefinition CopyMethod(MethodDefinition source, TypeDefinition destination, string prefix)
@@ -32,9 +45,8 @@ namespace SingleExecutable
 			{
 				var operand = i.Operand;
 
-				if (operand is MethodReference)
+				if (operand is MethodReference methodReference)
 				{
-					var methodReference = operand as MethodReference;
 					if (methodReference.DeclaringType == source.DeclaringType)
 					{
 						methodReference = FixLocalMethodReference(methodReference, destination, prefix, targetModule);
@@ -42,14 +54,18 @@ namespace SingleExecutable
 					newMethod.Body.Instructions.Add(Instruction.Create(i.OpCode, targetModule.Import(methodReference)));
 					continue;
 				}
-				if (operand is FieldReference)
+				if (operand is FieldReference fieldReference)
 				{
-					newMethod.Body.Instructions.Add(Instruction.Create(i.OpCode, targetModule.Import(operand as FieldReference)));
+					if (fieldReference.DeclaringType == source.DeclaringType)
+					{
+						fieldReference = FixLocalFieldReference(fieldReference, destination, prefix, targetModule);
+					}
+					newMethod.Body.Instructions.Add(Instruction.Create(i.OpCode, targetModule.Import(fieldReference)));
 					continue;
 				}
-				if (operand is TypeReference)
+				if (operand is TypeReference typeReference)
 				{
-					newMethod.Body.Instructions.Add(Instruction.Create(i.OpCode, targetModule.Import(operand as TypeReference)));
+					newMethod.Body.Instructions.Add(Instruction.Create(i.OpCode, targetModule.Import(typeReference)));
 					continue;
 				}
 
@@ -67,6 +83,12 @@ namespace SingleExecutable
 		static MethodAttributes FixAttributes(MethodAttributes attributes)
 		{
 			return attributes & ~MethodAttributes.RTSpecialName & ~MethodAttributes.SpecialName;
+		}
+
+		static FieldReference FixLocalFieldReference(FieldReference f, TypeDefinition destination, string prefix, ModuleDefinition targetModule)
+		{
+			var field = new FieldReference($"{prefix}{f.Name}", targetModule.Import(f.FieldType), destination);
+			return field;
 		}
 
 		static MethodReference FixLocalMethodReference(MethodReference m, TypeDefinition destination, string prefix, ModuleDefinition targetModule)

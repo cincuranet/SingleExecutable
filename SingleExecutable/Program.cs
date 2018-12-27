@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using McMaster.Extensions.CommandLineUtils;
@@ -21,6 +22,7 @@ namespace SingleExecutable
 			var argOutput = app.Option("-o", "Output file.", CommandOptionType.SingleValue);
 			var argAdd = app.Option("-a", "Another files to add.", CommandOptionType.MultipleValue);
 			var argPreExtract = app.Option("-p", "Pre-extract files.", CommandOptionType.MultipleValue);
+			var argCompress = app.Option("-c", "Compress files.", CommandOptionType.NoValue);
 			app.Execute(args);
 			if (!argExecutable.HasValue() || !argOutput.HasValue())
 			{
@@ -38,7 +40,9 @@ namespace SingleExecutable
 				Console.WriteLine("Loading...");
 				var assembly = AssemblyDefinition.ReadAssembly(executable);
 				Console.WriteLine("Embedding:");
-				var embedDllsResult = EmbedDlls(assembly, Path.GetDirectoryName(executable), argAdd.Values);
+				var embedDllsResult = EmbedDlls(assembly, Path.GetDirectoryName(executable), argAdd.Values, argCompress.HasValue());
+				Console.WriteLine("Writing compression...");
+				WriteCompression(assembly, embedDllsResult, argCompress.HasValue());
 				Console.WriteLine("Writing pre-extraction...");
 				WritePreExtract(assembly, embedDllsResult, argPreExtract.Values);
 				Console.WriteLine("Injecting:");
@@ -60,27 +64,36 @@ namespace SingleExecutable
 			Environment.Exit(1);
 		}
 
-		static IEnumerable<Tuple<string, string>> EmbedDlls(AssemblyDefinition assembly, string directory, IEnumerable<string> anotherDlls)
+		static IEnumerable<(string dll, string resourceName)> EmbedDlls(AssemblyDefinition assembly, string directory, IEnumerable<string> anotherDlls, bool compress)
 		{
-			var result = new List<Tuple<string, string>>();
+			var result = new List<(string, string)>();
 			var standard = Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly);
 			var another = anotherDlls.Select(Path.GetFullPath).Where(File.Exists);
 			foreach (var dll in standard.Concat(another))
 			{
-				var resourceName = EmbedDll(assembly, dll);
-				result.Add(Tuple.Create(dll, resourceName));
+				var resourceName = EmbedDll(assembly, dll, compress);
+				result.Add((dll, resourceName));
 			}
 			return result;
 		}
 
-		static void WritePreExtract(AssemblyDefinition assembly, IEnumerable<Tuple<string, string>> embeddedDlls, IEnumerable<string> preExtractDlls)
+		static void WriteCompression(AssemblyDefinition assembly, IEnumerable<(string dll, string resourceName)> embeddedDlls, bool compress)
+		{
+			var data = compress
+				? Encoding.UTF8.GetBytes(string.Join(Definitions.CompressionSeparator.ToString(), embeddedDlls.Select(x => x.resourceName)))
+				: Array.Empty<byte>();
+			var resource = new EmbeddedResource(Definitions.CompressionResourceName, ManifestResourceAttributes.Private, data);
+			assembly.MainModule.Resources.Add(resource);
+		}
+
+		static void WritePreExtract(AssemblyDefinition assembly, IEnumerable<(string dll, string resourceName)> embeddedDlls, IEnumerable<string> preExtractDlls)
 		{
 			var preExtract = new HashSet<string>(preExtractDlls.Select(Path.GetFullPath), StringComparer.OrdinalIgnoreCase);
 			var dlls = embeddedDlls
-				.Where(x => preExtract.Contains(x.Item1) || !Helpers.IsDotNetDll(x.Item1))
-				.Select(x => x.Item2);
+				.Where(x => preExtract.Contains(x.dll) || !Helpers.IsDotNetDll(x.dll))
+				.Select(x => x.resourceName);
 			var data = Encoding.UTF8.GetBytes(string.Join(Definitions.PreExtractSeparator.ToString(), dlls));
-			var resource = new EmbeddedResource(Definitions.PreExtractResourceName, ManifestResourceAttributes.Public, data);
+			var resource = new EmbeddedResource(Definitions.PreExtractResourceName, ManifestResourceAttributes.Private, data);
 			assembly.MainModule.Resources.Add(resource);
 		}
 
@@ -89,17 +102,29 @@ namespace SingleExecutable
 			var entryPointClass = assembly.EntryPoint.DeclaringType;
 			var sourceAssembly = AssemblyDefinition.ReadAssembly(ExecutingAssembly.Location);
 			Console.WriteLine($"  methods");
-			MethodCopier.CopyMethods(sourceAssembly.MainModule.Types.First(t => t.Name == nameof(InjectMe)), entryPointClass, Definitions.Prefix);
+			InjectMeCopier.Copy(sourceAssembly.MainModule.Types.First(t => t.Name == nameof(InjectMe)), entryPointClass, Definitions.Prefix);
 			Console.WriteLine($"  .cctor");
 			CctorProcessor.ProcessCctor(entryPointClass, Definitions.Prefix);
 		}
 
-		static string EmbedDll(AssemblyDefinition assembly, string dll)
+		static string EmbedDll(AssemblyDefinition assembly, string dll, bool compress)
 		{
 			Console.WriteLine($"  {dll}");
 			var name = Path.GetFileName(dll);
 			var resourceName = $"{Definitions.PrefixDll}{name}";
-			var resource = new EmbeddedResource(resourceName, ManifestResourceAttributes.Private, File.ReadAllBytes(dll));
+			var data = File.ReadAllBytes(dll);
+			if (compress)
+			{
+				using (var s = new MemoryStream())
+				{
+					using (var deflate = new DeflateStream(s, CompressionLevel.Optimal, true))
+					{
+						deflate.Write(data, 0, data.Length);
+					}
+					data = s.ToArray();
+				}
+			}
+			var resource = new EmbeddedResource(resourceName, ManifestResourceAttributes.Private, data);
 			assembly.MainModule.Resources.Add(resource);
 			return resourceName;
 		}
