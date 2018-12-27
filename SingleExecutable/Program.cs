@@ -10,7 +10,7 @@ namespace SingleExecutable
 {
 	static class Program
 	{
-		readonly static System.Reflection.Assembly ExecutingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
+		static readonly System.Reflection.Assembly ExecutingAssembly = System.Reflection.Assembly.GetExecutingAssembly();
 
 		static void Main(string[] args)
 		{
