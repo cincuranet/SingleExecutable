@@ -38,7 +38,9 @@ namespace SingleExecutable
 			try
 			{
 				Console.WriteLine("Loading...");
-				var assembly = AssemblyDefinition.ReadAssembly(executable);
+				var assemblyResolver = new DefaultAssemblyResolver();
+				assemblyResolver.AddSearchDirectory(Path.GetDirectoryName(executable));
+				var assembly = AssemblyDefinition.ReadAssembly(executable, new ReaderParameters() { AssemblyResolver = assemblyResolver });
 				Console.WriteLine("Embedding:");
 				var embedDllsResult = EmbedDlls(assembly, Path.GetDirectoryName(executable), argAdd.Values, argCompress.HasValue());
 				Console.WriteLine("Writing compression...");
