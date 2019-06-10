@@ -9,14 +9,14 @@ namespace SingleExecutable
 {
 	static class InjectMe
 	{
-		static readonly object LogLock;
+		static readonly object Locker;
 
 		static readonly Assembly ExecutingAssembly;
 		static readonly string[] CompressedResources;
 
 		static InjectMe()
 		{
-			LogLock = new object();
+			Locker = new object();
 
 			AppDomain.CurrentDomain.AssemblyResolve += AssemblyResolve;
 			ExecutingAssembly = Assembly.GetExecutingAssembly();
@@ -26,9 +26,12 @@ namespace SingleExecutable
 
 		static Assembly AssemblyResolve(object sender, ResolveEventArgs args)
 		{
-			Log($"Resolving '{args.Name}'.");
-			var assemblyName = new AssemblyName(args.Name);
-			return GetLoadedAssembly(assemblyName) ?? GetEmbeddedAssembly(assemblyName);
+			lock (Locker)
+			{
+				Log($"Resolving '{args.Name}'.");
+				var assemblyName = new AssemblyName(args.Name);
+				return GetLoadedAssembly(assemblyName) ?? GetEmbeddedAssembly(assemblyName);
+			}
 		}
 
 		static void PreExtractDlls()
@@ -166,10 +169,7 @@ namespace SingleExecutable
 		{
 			if (int.TryParse(Environment.GetEnvironmentVariable(Definitions.LoggingEnvironmentVariable), out var logging) && logging == 1)
 			{
-				lock (LogLock)
-				{
-					File.AppendAllLines(Definitions.LogFile, new[] { message });
-				}
+				File.AppendAllLines(Definitions.LogFile, new[] { message });
 			}
 		}
 	}
