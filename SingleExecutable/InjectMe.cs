@@ -9,11 +9,15 @@ namespace SingleExecutable
 {
 	static class InjectMe
 	{
+		static readonly object LogLock;
+
 		static readonly Assembly ExecutingAssembly;
 		static readonly string[] CompressedResources;
 
 		static InjectMe()
 		{
+			LogLock = new object();
+
 			AppDomain.CurrentDomain.AssemblyResolve += AssemblyResolve;
 			ExecutingAssembly = Assembly.GetExecutingAssembly();
 			CompressedResources = GetCompressionNames(ExecutingAssembly);
@@ -162,7 +166,10 @@ namespace SingleExecutable
 		{
 			if (int.TryParse(Environment.GetEnvironmentVariable(Definitions.LoggingEnvironmentVariable), out var logging) && logging == 1)
 			{
-				File.AppendAllLines(Definitions.LogFile, new[] { message });
+				lock (LogLock)
+				{
+					File.AppendAllLines(Definitions.LogFile, new[] { message });
+				}
 			}
 		}
 	}
