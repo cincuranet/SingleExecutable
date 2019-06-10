@@ -12,7 +12,7 @@
 		<description>
 Tool that allows you to pack all your DLLs to the main executable.
 
-More info: https://www.tabsoverspaces.com/id/233581/ .
+More info: https://github.com/cincuranet/SingleExecutable/blob/master/README.md .
 		</description>
 		<tags>executable, singleexecutable</tags>
 	</metadata>
